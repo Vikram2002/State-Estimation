@@ -1,1 +1,25 @@
+# VS Code settings
+.vscode/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+
+# Coverage reports
+.coverage
+htmlcov/
+
+# Virtual environments
 .venv/
+env/
+venv/
+
+# Test results
+*.log
+*.pytest_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# MacOS & Linux metadata
+.DS_Store
