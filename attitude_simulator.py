@@ -45,8 +45,8 @@ class AttitudeSimulator():
         """
 
         # Create world magnetic north vector with declination and inclination
-        self._world_mag_north_unit_vec = transform_vector_euler(
-            np.array([0, 1, 0]), 
+        self._world_mag_north_vec = transform_vector_euler(
+            np.array([0, 5e-5, 0]), 
             np.radians(-mag_inc_angle_deg), 
             0, 
             np.radians(-mag_dec_angle_deg)
@@ -128,7 +128,7 @@ class AttitudeSimulator():
     def get_measurements(self, attitude: Quaternion, ang_vel: np.ndarray) -> dict[str, np.ndarray]:
         # Transform gravity and magnetic north vectors from world frame to body frame
         accel_true = attitude.inverse().rotate_vector(self._world_gravity_vec)
-        mag_true = attitude.inverse().rotate_vector(self._world_mag_north_unit_vec)
+        mag_true = attitude.inverse().rotate_vector(self._world_mag_north_vec)
 
         # Gyroscope measurement is the angular velocity in body frame
         gyro_true = ang_vel
