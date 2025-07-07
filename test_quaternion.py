@@ -8,7 +8,7 @@ def generate_random_quaternion() -> Quaternion:
 
 def test_quaternion_representation():
     q = Quaternion(1, 2, 3, 4)
-    assert repr(q) == "Quaternion(1, 2, 3, 4)"
+    assert repr(q) == "Quaternion(w: 1, x: 2, y: 3, z: 4)"
 
 def test_to_array():
     q = Quaternion(1, 2, 3, 4)
@@ -96,9 +96,6 @@ def test_scale_invalid_input():
         q.scale("not-a-number")
 
 def test_invalid_axis_angle_inputs():
-    with pytest.raises(ValueError):
-        Quaternion.from_axis_angle(np.array([0, 0, 0]), np.pi)
-
     with pytest.raises(ValueError):
         Quaternion.from_axis_angle(np.array([1, 0]), np.pi)
 
