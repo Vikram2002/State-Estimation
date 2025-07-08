@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.spatial.transform import Rotation as R
-from attitude_simulator import *
+from attitude_simulator import AttitudeSimulator, AngularAccelerationCommand
 from quaternion import Quaternion
 
 class AttitudeEstimatorQ():
@@ -22,21 +22,23 @@ class AttitudeEstimatorQ():
         self._dt = dt
 
         # Tune accordingly
-        self._max_gyro = 4 * np.pi
-        self._max_acc = 10
-        self._max_mag = 5e-5
+        self._GYRO_NORM = 4 * np.pi
+        self._ACC_NORM = 10
+        self._MAG_NORM = 5e-5
         
+        # Helps with initialization
         self._initialized = False
 
     def get_attitude_from_measurements(self):
         """ 
         Obtains the attitude based on the accelerometer and magnetometer readings.
         """
-        # Get world k-hat vector by normalizing the gravity vector
+        # Get world k-hat vector via gravity vector
         if np.linalg.norm(self._accel) == 0:
             raise ValueError("Cannot detect gravity vector. Accelerometer data is zero.")
         k_world = -(self._accel) / np.linalg.norm(self._accel)
     
+        # Get world j-hat vector via magnetic north vector
         # Remove inclination
         mag = self._mag - np.dot(self._mag, k_world) * k_world 
         if np.linalg.norm(mag) == 0:
@@ -44,7 +46,7 @@ class AttitudeEstimatorQ():
         # Remove declination
         dec_q = Quaternion.from_axis_angle(k_world, np.radians(self._magnetic_declination_angle))
         mag = dec_q.rotate_vector(mag)
-        # Get world j-hat vector by normalizing the adjusted mag vector
+        # Normalize the adjusted mag vector
         j_world = mag / np.linalg.norm(mag)
 
         # Get world i-hat vector by using the cross product
@@ -68,7 +70,19 @@ class AttitudeEstimatorQ():
         self._accel = data
 
     def update_attitude(self, initial_attitude=None):
+        """
+        Attitude update step uses a modified Kalman Filter.
 
+            Motion Model: The update equations use angular velocity to perform regular quaternion integration.
+
+            Measurement Model: The sensor measurments are used to indirectly measure the state 
+                               and construct the innovation vector in state space instead of measurment space.
+                               This helps bypass the non-linearities involved in computing direct measurments 
+                               from the attitude.
+
+            The noise matrices are constructed by appropriately scaling noise parameters to be relative 
+            to the magnitude of the measurement as determined by [_ACC/_GYRO/_MAG]_NORM variables.
+        """
         # Initialize the attitude at time t=0
         if not self._initialized:
             # If initial attitude has been provided, then use it, otherwise determine from sensor measurements
@@ -77,7 +91,7 @@ class AttitudeEstimatorQ():
                 self._attitude_cov = np.zeros((4, 4))
             else:
                 self._attitude = self.get_attitude_from_measurements()
-                self._attitude_cov = np.eye(4) * (gamma(self._acc_error / self._max_acc) + gamma(self._mag_error / self._max_mag))
+                self._attitude_cov = np.eye(4) * (gamma(self._acc_error / self._ACC_NORM) + gamma(self._mag_error / self._MAG_NORM))
             self._initialized = True
             return
 
@@ -93,7 +107,7 @@ class AttitudeEstimatorQ():
                       [dq_z,  dq_y, -dq_x,  dq_w]])
         
         # Process noise covariance matrix
-        Q = np.diag([1, 1, 1, 1]) * gamma(self._gyro_error / self._max_gyro)
+        Q = np.diag([1, 1, 1, 1]) * gamma(self._gyro_error / self._GYRO_NORM)
 
         # EKF prediction step
         X = (self._attitude * delta_q).to_array()
@@ -103,9 +117,9 @@ class AttitudeEstimatorQ():
         H = np.eye(4)
 
         # Measurement noise covariance matrix
-        R = np.eye(4) * (gamma(self._acc_error / self._max_acc) + gamma(self._mag_error / self._max_mag))
+        R = np.eye(4) * (gamma(self._acc_error / self._ACC_NORM) + gamma(self._mag_error / self._MAG_NORM))
         
-        # Compute the innovation vector Y by choosing the quaternion (q or -q) closer to prediction
+        # Compute the innovation vector Y by choosing the appropriate quaternion (q or -q) closer to prediction
         pred = H @ X
         measurement = self.get_attitude_from_measurements().to_array()
         neg_measurement = -measurement
@@ -117,11 +131,6 @@ class AttitudeEstimatorQ():
         S = H @ P @ H.T + R
         if np.linalg.det(S) == 0:
             K = np.zeros((4, 4))
-        elif np.isnan(np.linalg.det(S)):
-            if self._gyro_error >= self._max_gyro:
-                K = np.linalg.inv(H)
-            else:
-                K = np.zeros((4, 4))
         else:
             K = P @ H.T @ np.linalg.inv(S)
 
@@ -137,81 +146,12 @@ class AttitudeEstimatorQ():
 
 def gamma(x: float) -> float:
     """
-    Function to help tune noise parameters.
-    gamma(x) goes from 0 to inf as x goes from 0 to 1
+    Function to help scale noise parameters.
+    gamma(x) goes from 0 to INF as x goes from 0 to 1
     GAMMA_FACTOR determines how quickly the function increases
     """
-
-    GAMMA_FACTOR = 4 # Tune accordingly
-
-    if x >= 1:
-        return np.inf
-    else:
-        return x / (1 - x)**GAMMA_FACTOR
-
-
-def main():
-
-    mag_dec_angle_deg = 4.0
-    mag_inc_angle_deg = 60.0
-    accel_error = 0.5
-    mag_error = 1e-5
-    gyro_error = 0.2
-
-    simulator = AttitudeSimulator(
-        mag_dec_angle_deg,
-        mag_inc_angle_deg,
-        accel_error,
-        mag_error,
-        gyro_error
-    )
-
-    initial_attitude = Quaternion.from_axis_angle(np.array([1, 0, 0]), np.pi / 2)
-    initial_ang_vel = np.array([0.0, 0.0, 0.0])
-    commands = [AngularAccelerationCommand(np.array([np.pi, 0, 0]), 1),
-                AngularAccelerationCommand(np.array([0, 0, 0]), 5),
-                AngularAccelerationCommand(np.array([-np.pi, 0, 0]), 1),
-                AngularAccelerationCommand(np.array([0, -np.pi, 0]), 1),
-                AngularAccelerationCommand(np.array([0, 0, -np.pi]), 2),
-                AngularAccelerationCommand(np.array([0, 0, 0]), 5)
-    ]
-    dt = 0.01
-                
-    simulator_results = simulator.simulate(initial_attitude,
-                                           initial_ang_vel,
-                                           commands,
-                                           dt
-    )
-
-    estimator = AttitudeEstimatorQ(
-        mag_dec_angle_deg,
-        accel_error,
-        mag_error,
-        gyro_error,
-        dt
-    )
-
-    estimated_attitude = {} 
-
-    for time in simulator_results['attitude'].keys():
-
-        estimator.update_magnetometer(simulator_results['magnetometer'][time])
-        estimator.update_accelerometer(simulator_results['accelerometer'][time])
-        estimator.update_gyroscope(simulator_results['gyroscope'][time])
-        estimator.update_attitude()
-        estimated_attitude[time] = estimator._attitude.to_array()
-
-    # Print results
-    print_every = 10
-
-    for idq_x, time in enumerate(simulator_results['attitude'].keys()):
-        if idq_x % print_every == 0:
-            est_q = estimated_attitude[time]
-            actual_q = simulator_results['attitude'][time]
-
-            print(f"Time      - {time:.3f}")
-            print(f"Actual    - {actual_q}")
-            print(f"Estimated - {est_q}\n")
-
-if __name__ == "__main__":
-    main()
+    # Tune accordingly
+    INF = 1e5 
+    GAMMA_FACTOR = 2
+    
+    return INF * x ** (1/GAMMA_FACTOR)
