@@ -99,7 +99,7 @@ class AttitudeSimulator():
             for _ in range(int(command.duration / dt)):
 
                 # Update attitude using quaternion integration
-                attitude = attitude * Quaternion.from_axis_angle(ang_vel, np.linalg.norm(ang_vel) * dt)
+                attitude = attitude * Quaternion.from_axis_angle(ang_vel, float(np.linalg.norm(ang_vel) * dt))
                 attitude = attitude.normalize()
 
                 # Update angular velocity using Euler integration

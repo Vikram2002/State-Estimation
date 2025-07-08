@@ -73,7 +73,7 @@ class Quaternion:
         """
         Returns the norm (magnitude) of the quaternion.
         """
-        return np.linalg.norm(self.to_array())
+        return float(np.linalg.norm(self.to_array()))
 
     def scale(self, scalar: float) -> 'Quaternion':
         """
@@ -144,5 +144,3 @@ class Quaternion:
             [2*(x*y + w*z),           1 - 2*(x**2 + z**2), 2*(y*z - w*x)],
             [2*(x*z - w*y),           2*(y*z + w*x),     1 - 2*(x**2 + y**2)]
         ])
-
-
